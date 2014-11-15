@@ -225,6 +225,9 @@ public:
     bool IsTouched(Point pos);
     void Remove();
     const ISOInfo* GetISOInfo() { return isoInfo; }
+    float GetSaleValue() { return saleValue; }
+    float GetItemHeight() { return itemHeight; }
+    void SetColor(Color3B color);
 protected:
     virtual bool init(const ISOInfo* isoInfo);  
 private:
@@ -233,12 +236,15 @@ private:
 	Sprite* spriteFlag;
 	Label* labelCountry;
 	Label* labelValue;
+    float saleValue;
+    float itemHeight;
 };
 
 class CalcButton : public Node
 {
 public:
     enum Type {
+        None,
         Num,
         Add,
         Sub,
@@ -247,13 +253,26 @@ public:
         Clear,
         Equal,
         Decimal,
+        Delete,
+        Decide,
+        Cancel,
     };
+
+    // 電卓の配置情報
+    struct Data {
+        Type type;
+        int number;
+        Color3B baseColor;
+        std::string title;
+        std::string sprite;
+        Point position;
+    };
+
     static CalcButton* create(
-        Type type, int number, Color3B baseColor, 
-        std::string title, std::string sprite
+        const Data* data
     ) {
         CalcButton * ret = new CalcButton();
-        if (ret && ret->init(type, number, baseColor, title, sprite))
+        if (ret && ret->init(data))
         {
             ret->autorelease();
         }
@@ -263,21 +282,28 @@ public:
         }
         return ret;
     }
+
+    bool IsTouched(Point pos);
+    Type GetType() { return data->type; }
+    bool IsType(Type type) { return data->type == type; }
+    int GetNum() { return data->number; }
+
+    void Select() { buttonSprite->setColor(Color3B(255,255,0)); }
+    void Unselect() { buttonSprite->setColor(data->baseColor); }
+
 protected:
     virtual bool init(
-        Type type, int number, Color3B baseColor, 
-        std::string title, std::string sprite
+        const Data* data
     );    
 private:
     Sprite* buttonSprite;
     Label* titleLabel;
 
-    Type type;
-    int number;
-    Color3B baseColor;
+    const Data* data;
 };
 
 enum TouchType {
+    TouchNone,
 	TouchBegan,
 	TouchStationary,
 	TouchMoved,
@@ -302,6 +328,14 @@ typedef std::vector<Touch*> Touches;
 class Main : public Layer
 {
 public:
+    
+    enum Motion {
+        MotionNormal,
+        MotionPointing,
+        MotionArmsCross,
+        MotionMatroos,
+    };
+    
     // there's no 'id' in cpp, so we recommend returning the class instance pointer
     static Scene* createScene();
     static Main* Get() { return instance; }
@@ -323,9 +357,19 @@ protected:
 private:
 	Item* GetTouchedItem(Point pos);
 	void RemoveItem(Item* item);
+    void DispCalcValue(bool equal = false);
+    float CalcInputValue();
+    void OperateCalcValue(bool equal = false);
+    void ResetInput();
+
+    void UpdateMessage();
+
+    CalcButton* GetTouchedCalcButton(Point pos);
 
     void UpdateStateView();
     void UpdateStateCalcOpen();
+    void UpdateStateCalc();
+    void UpdateStateCalcClose();
 
 	static Main* instance;
 	std::map<ISO4217, std::map<ISO4217, RateData> > rates;
@@ -333,6 +377,7 @@ private:
 	TouchInfo touchInfos[MaxTouchNum];
 	float fromStartSec;
 
+    // 状態
     enum State {
         View,
         CalcOpen,
@@ -345,16 +390,56 @@ private:
 	Point itemLayerPosBegan;
 	std::vector<Item*> items;
 
+    ISO4217 baseISO;
+    float baseValue;
+    Item* touchedItem;
+    Item::Move itemMove;
+    Point scrollVec;
+
+    // フッタ
+    Sprite* spriteMenu;
+    Sprite* spriteReload;
+    Sprite* spriteSettings;
+
     // 電卓
     Layer* calcLayer;
     Sprite* calcBackSprite;
-    Label* calcInfoLabel;
+    Label* calcBaseLabel;
+    Label* calcCalcLabel;
+    Label* calcOperateLabel;
     std::vector<CalcButton*> calcButtons;
+    CalcButton* touchedCalcButton;
 
-	Item* touchedItem;
-	Item::Move itemMove;
-	ISO4217 baseISO;
-	float baseValue;
+    float calcValue;
+    uint calcIntegerValue;
+    uint calcDecimalValue;
+    uint calcIntegerFigure;
+    uint calcDecimalFigure;
+    bool calcDecimalOn;
+    bool calcNumberSet;
+    bool calcEqual;
+    CalcButton::Type calcType;
+    CalcButton::Type calcPrevType;
+
+    // 追加
+    LayerColor* addLayer;
+    Sprite* addTag;
+    bool addDisp;
+
+    // キャラ
+    Layer* charaLayer;
+    Sprite* charaUnitSprite;
+    Sprite* charaBalloonSprite;
+    Sprite* charaSpeakSprite;
+    Label* charaMessage;
+};
+
+typedef const std::pair<Main::Motion, std::string> MotionSpritePair;
+typedef const std::map<Main::Motion, std::string> MotionSpriteMap;
+
+struct MessageMotion {
+    std::string message;
+    Main::Motion motion;
 };
 
 #endif // __MAIN_SCENE_H__

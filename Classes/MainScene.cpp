@@ -4,6 +4,10 @@
 //using namespace extension;
 using namespace cocos2d::network;
 
+#define ENABLE_MOVE_ITEM false
+
+static const float itemOffset = 160;
+
 static const Code2ISOMap c2is = {
     Code2ISO("AED", AED),
     Code2ISO("AFN", AFN),
@@ -185,6 +189,55 @@ static const ISOInfoMap isoInfoMap = {
     ISOInfoPair(CHF, ISOInfo{ CHF, "₣", "スイス・フラン", "chf.png" }),
 };
 
+static const CalcButton::Data calcDatas[] = {
+    { CalcButton::Decimal, 0, Color3B(127,127,127), ".", "calc160x160.png", Point(80+320,80) },
+    { CalcButton::Num, 0, Color3B(127,127,127), "０", "calc160x160.png", Point(80+160,80) },
+    { CalcButton::Num, 1, Color3B(127,127,127), "１", "calc160x160.png", Point(80,80+160) },
+    { CalcButton::Num, 2, Color3B(127,127,127), "２", "calc160x160.png", Point(80+160,80+160) },
+    { CalcButton::Num, 3, Color3B(127,127,127), "３", "calc160x160.png", Point(80+320,80+160) },
+    { CalcButton::Num, 4, Color3B(127,127,127), "４", "calc160x160.png", Point(80,80+320) },
+    { CalcButton::Num, 5, Color3B(127,127,127), "５", "calc160x160.png", Point(80+160,80+320) },
+    { CalcButton::Num, 6, Color3B(127,127,127), "６", "calc160x160.png", Point(80+320,80+320) },
+    { CalcButton::Num, 7, Color3B(127,127,127), "７", "calc160x160.png", Point(80,80+480) },
+    { CalcButton::Num, 8, Color3B(127,127,127), "８", "calc160x160.png", Point(80+160,80+480) },
+    { CalcButton::Num, 9, Color3B(127,127,127), "９", "calc160x160.png", Point(80+320,80+480) },
+    { CalcButton::Add, 0, Color3B(255,127,0), "+", "calc160x160.png", Point(80+480,80+640) },
+    { CalcButton::Sub, 0, Color3B(255,127,0), "−", "calc160x160.png", Point(80+480,80+480) },
+    { CalcButton::Mul, 0, Color3B(255,127,0), "×", "calc160x160.png", Point(80+480,80+320) },
+    { CalcButton::Div, 0, Color3B(255,127,0), "÷", "calc160x160.png", Point(80+480,80+160) },
+    { CalcButton::Clear, 0, Color3B(255,127,0), "c", "calc160x160.png", Point(80+320,80+640) },
+    { CalcButton::Equal, 0, Color3B(255,127,0), "=", "calc160x160.png", Point(80+480,80) },
+    { CalcButton::Delete, 0, Color3B(255,127,0), "del", "calc160x160.png", Point(80+160,80+640) },
+    { CalcButton::Decide, 0, Color3B(0,255,0), "換算", "calc160x160.png", Point(80,80) },
+    { CalcButton::Cancel, 0, Color3B(0,0,255), "戻る", "calc160x160.png", Point(80,80+640) },
+    { CalcButton::None }
+};
+
+static const MotionSpriteMap motionSpriteMap = {
+    MotionSpritePair( Main::MotionNormal,       "kc_01_default.png" ),
+    MotionSpritePair( Main::MotionPointing,     "kc_02_ubi.png" ),
+    MotionSpritePair( Main::MotionArmsCross,    "kc_03_ude.png" ),
+    MotionSpritePair( Main::MotionMatroos,      "kc_04_sea.png" ),
+};
+
+static const std::vector<MessageMotion> messageMotions = {
+    { "はぁ！",            Main::MotionArmsCross },
+    { "なんだよ",          Main::MotionNormal },
+    { "なにやってんだよ！", Main::MotionPointing },
+    { "またかよ",          Main::MotionPointing },
+    { "下がった",          Main::MotionMatroos },
+    { "踏むよ！",          Main::MotionPointing },
+    { "めんどくせ〜な",     Main::MotionArmsCross },
+    { "もういいだろ",       Main::MotionArmsCross },
+    { "見んな",            Main::MotionArmsCross },
+    { "終わり",            Main::MotionMatroos },
+    { "ぶっとばす",         Main::MotionPointing },
+    { "キモイ",            Main::MotionNormal },
+    { "明日にしろ",        Main::MotionNormal },
+    { "なんすか？",        Main::MotionArmsCross },
+    { "ダメ",             Main::MotionArmsCross },
+};
+
 Main* Main::instance = NULL;
 
 Scene* Main::createScene()
@@ -220,42 +273,43 @@ void Main::callback(HttpClient* sender, HttpResponse* response)
 //    CCLOG(result.c_str());
 
     Json* json = Json_create(result.c_str());
-    Json* quotes = Json_getItem(json, "quotes");
-    for(Json* element = quotes->child; element != NULL; element = element->next) {
-        std::string pair = Json_getString(element, "currencyPairCode", NULL);
-        Code2ISOMap::const_iterator src = c2is.find(pair.substr(0, 3));
-        Code2ISOMap::const_iterator dst = c2is.find(pair.substr(3, 3));
+    if(json != NULL) {
+        Json* quotes = Json_getItem(json, "quotes");
+        for(Json* element = quotes->child; element != NULL; element = element->next) {
+            std::string pair = Json_getString(element, "currencyPairCode", NULL);
+            Code2ISOMap::const_iterator src = c2is.find(pair.substr(0, 3));
+            Code2ISOMap::const_iterator dst = c2is.find(pair.substr(3, 3));
 
-        if(src != c2is.end() && dst != c2is.end()) {
-            ISO4217 srcCode = src->second;
-            ISO4217 dstCode = dst->second;
-            const char* open = Json_getString(element, "open", "0");
-            const char* high = Json_getString(element, "high", "0");
-            const char* low = Json_getString(element, "low", "0");
-            const char* ask = Json_getString(element, "ask", "0");
-            const char* bid = Json_getString(element, "bid", "0");
-            
-            RateData rateData = {
-                srcCode,
-                dstCode,
-                std::strtof(open, NULL),
-                std::strtof(high, NULL),
-                std::strtof(low, NULL),
-                std::strtof(ask, NULL),
-                std::strtof(bid, NULL),
-            };
+            if(src != c2is.end() && dst != c2is.end()) {
+                ISO4217 srcCode = src->second;
+                ISO4217 dstCode = dst->second;
+                const char* open = Json_getString(element, "open", "0");
+                const char* high = Json_getString(element, "high", "0");
+                const char* low = Json_getString(element, "low", "0");
+                const char* ask = Json_getString(element, "ask", "0");
+                const char* bid = Json_getString(element, "bid", "0");
+                
+                RateData rateData = {
+                    srcCode,
+                    dstCode,
+                    std::strtof(open, NULL),
+                    std::strtof(high, NULL),
+                    std::strtof(low, NULL),
+                    std::strtof(ask, NULL),
+                    std::strtof(bid, NULL),
+                };
 
-            rates[srcCode][dstCode] = rateData;
+                rates[srcCode][dstCode] = rateData;
 
-            float swap = rateData.sale;
-            rateData.sale = rateData.buy;
-            rateData.buy = rateData.sale;
+                float swap = rateData.sale;
+                rateData.sale = 1 / rateData.buy;
+                rateData.buy = 1 / swap;
 
-            rates[dstCode][srcCode] = rateData;
+                rates[dstCode][srcCode] = rateData;
+            }
         }
-        
+        Json_dispose(json);
     }
-    Json_dispose(json);
     
     refreshItems();
 }
@@ -282,6 +336,15 @@ bool Main::init()
     fromStartSec = 0;
     EventDispatcher* eventDispatcher = Director::getInstance()->getEventDispatcher();
     touchedItem = NULL;
+    touchedCalcButton = NULL;
+
+    calcValue = 0;
+    calcIntegerValue = 0;
+    calcDecimalValue = 0;
+    calcIntegerFigure = 0;
+    calcDecimalFigure = 0;
+    calcDecimalOn = false;
+    calcType = CalcButton::None;
 
     // タッチイベント
     auto elta = EventListenerTouchAllAtOnce::create();
@@ -316,18 +379,95 @@ bool Main::init()
 
     scheduleUpdate();
 
+    // モック
+    Sprite* mock = Sprite::create("mockup.jpg");
+    mock->setPosition(visibleSize.width/2, visibleSize.height/2);
+    addChild(mock);
+
+    Sprite* wallPaper = Sprite::create("wallpaper.png");
+    wallPaper->setPosition(visibleSize.width/2, visibleSize.height/2);
+    addChild(wallPaper);
+
+    // アイテム
     itemLayer = Layer::create();
     addChild(itemLayer);
 
+    ISO4217 firstItems[] = {
+        JPY,
+        USD,
+        EUR,
+        CHF,
+        GBP,
+        ZAR,
+        ISO4217_NUM
+    };
+
     Point itemPosition = Point(visibleSize.width/2, visibleSize.height - 128);
-    for(ISOInfoMap::const_iterator itr = isoInfoMap.begin(); itr != isoInfoMap.end(); ++itr) {
-        Item* item = Item::create(&itr->second);
+    for(int i = 0; firstItems[i] != ISO4217_NUM; ++i) {
+        const ISOInfo& isoInfo = isoInfoMap.find(firstItems[i])->second;
+        Item* item = Item::create(&isoInfo);
+        item->SetColor(i % 2 ? Color3B(131,16,59): Color3B(4,29,86));
         item->setPosition(itemPosition);
         itemLayer->addChild(item);
         items.push_back(item);
-        itemPosition.y -= 160;
+        itemPosition.y -= item->GetItemHeight();
     }
 
+
+    // キャラ
+    charaLayer = Layer::create();
+    charaLayer->setPosition(0,-568);
+    charaLayer->runAction(Sequence::create(
+//                            DelayTime::create(30),
+                            EaseIn::create(
+                                MoveTo::create(0.5f, Point(0,0)), 3
+                            ),
+                            NULL));
+    addChild(charaLayer);
+
+    charaUnitSprite = Sprite::create("kc_01_default.png");
+    charaUnitSprite->setPosition(520, 128);
+    charaUnitSprite->setScale(0.75f);
+    charaUnitSprite->setAnchorPoint(Point(0.5f,0));
+    charaLayer->addChild(charaUnitSprite);
+
+    charaBalloonSprite = Sprite::create("balloon.png");
+    charaBalloonSprite->setPosition(464, 240);
+    charaBalloonSprite->setAnchorPoint(Point(1,0.5f));
+    charaBalloonSprite->setVisible(false);
+    charaLayer->addChild(charaBalloonSprite);
+    
+    charaMessage = Label::createWithSystemFont("杉田さん\nひどいっすわー","Arial",40);
+    charaMessage->setColor(Color3B::BLACK);
+    charaMessage->setPosition(192, 73);
+    charaMessage->setVisible(false);
+    charaBalloonSprite->addChild(charaMessage);    
+
+    charaSpeakSprite = Sprite::create("sound.png");
+    charaSpeakSprite->setPosition(visibleSize.width/2, 400);
+    charaLayer->addChild(charaSpeakSprite);
+
+
+    // フッタ
+    Sprite* footer = Sprite::create("footer.png");
+    footer->setPosition(visibleSize.width/2, 0);
+    footer->setAnchorPoint(Point(0.5f,0.0f));
+    Rect footerRect = footer->getTextureRect();
+    addChild(footer);
+
+    spriteMenu = Sprite::create("menu.png");
+    spriteMenu->setPosition(visibleSize.width/6, footerRect.size.height/2);
+    footer->addChild(spriteMenu);
+
+    spriteReload = Sprite::create("reload.png");
+    spriteReload->setPosition(visibleSize.width/2, footerRect.size.height/2);
+    footer->addChild(spriteReload);
+
+    spriteSettings = Sprite::create("settings.png");
+    spriteSettings->setPosition(visibleSize.width/6*5, footerRect.size.height/2);
+    footer->addChild(spriteSettings);
+
+    // 電卓
     calcLayer = Layer::create();
     calcLayer->setPosition(Point(visibleSize.width/2,-visibleSize.height/2));
     addChild(calcLayer);
@@ -335,20 +475,43 @@ bool Main::init()
     CalcButton* calcButton = NULL;
     calcBackSprite = Sprite::create("calc_back.png");
     calcLayer->addChild(calcBackSprite);
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 0, Color3B::GRAY, "０", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 1, Color3B::GRAY, "１", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 2, Color3B::GRAY, "２", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 3, Color3B::GRAY, "３", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 4, Color3B::GRAY, "４", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 5, Color3B::GRAY, "５", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 6, Color3B::GRAY, "６", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 7, Color3B::GRAY, "７", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 8, Color3B::GRAY, "８", "calc160x160.png"));
-    calcButtons.push_back(CalcButton::create(CalcButton::Num, 9, Color3B::GRAY, "９", "calc160x160.png"));
-    for(int i = 0; i < calcButtons.size(); ++i) {
-        calcButtons[i]->setPosition(Point(80+160*(i%4), 80+160*(i/4)));
-        calcBackSprite->addChild(calcButtons[i]);
+    
+    calcBaseLabel = Label::createWithSystemFont("999,999,999","Arial",64);
+    calcBaseLabel->setAnchorPoint(Point(1,0.5f));
+    calcBaseLabel->setPosition(Point(640,80+160*6));
+    calcBackSprite->addChild(calcBaseLabel);
+
+    calcCalcLabel = Label::createWithSystemFont("999,999,999","Arial",96);
+    calcCalcLabel->setAnchorPoint(Point(1,0.5f));
+    calcCalcLabel->setPosition(Point(640,80+160*5));
+    calcBackSprite->addChild(calcCalcLabel);
+
+    calcOperateLabel = Label::createWithSystemFont("","Arial",96);
+    calcOperateLabel->setAnchorPoint(Point(0,0.5f));
+    calcOperateLabel->setPosition(Point(0,80+160*5));
+    calcBackSprite->addChild(calcOperateLabel);
+
+    for(int i = 0; calcDatas[i].type != CalcButton::None; ++i) {
+        CalcButton* calcButton = CalcButton::create(&calcDatas[i]);
+        calcButtons.push_back(calcButton);
+        calcBackSprite->addChild(calcButton);
     }
+/*
+    // 追加
+    addDisp = false;
+
+    addLayer = LayerColor::create(Color4B::BLACK);
+    addLayer->setOpacity(127);
+    addLayer->changeWidthAndHeight(240,1136);
+    addLayer->setPosition(-240,0);
+    addChild(addLayer);
+
+    addTag = Sprite::create("add_tag.png");
+    addTag->setAnchorPoint(Point(0,0.5f));
+    addTag->setPosition(0,1024);
+    addLayer->addChild(addTag);
+*/
+
     return true;
 }
 
@@ -367,27 +530,88 @@ void Main::update(float deltaTime) {
     case CalcOpen:
         UpdateStateCalcOpen();
         break;
+    case Calc:
+        UpdateStateCalc();
+        break;
+    case CalcClose:
+        UpdateStateCalcClose();
+        break;        
     }
 
     // TouchBeganはupdate後にTouchStationaryに移行する
     for(int i = 0; i < MaxTouchNum; ++i) {
-        if(touchInfos[i].type == TouchBegan)
+        switch(touchInfos[i].type) {
+        case TouchBegan:
             touchInfos[i].type = TouchStationary;
+            break;
+        case TouchEnded:
+        case TouchCancelled:
+            touchInfos[i].type = TouchNone;
+            break;
+        }
     }
 }
 
 void Main::UpdateStateView() {
     Size visibleSize = Director::getInstance()->getVisibleSize();
     switch(touchInfos[0].type) {
+    case TouchNone:
+        if(ENABLE_MOVE_ITEM) {
+            Point inputVec = touchInfos[0].posEnded - touchInfos[0].posBegan;
+            Point layerPos = itemLayer->getPosition();
+            Point movedPos = itemLayerPosBegan;
+
+            movedPos.y += inputVec.y;
+            scrollVec = (movedPos - layerPos) * 0.5f;
+            movedPos = layerPos + scrollVec;
+            itemLayer->setPosition(movedPos);
+        }
+/*
+        if(items.size() > 0) {
+            float topHeight = itemLayer->getPosition().y + items[0]->getPosition().y;
+            float topLimit = visibleSize.height - (itemOffset / 2);
+            if(topHeight < topLimit)
+                scrollVec.y += (topLimit - topHeight) * 0.1f;
+        }
+        itemLayer->setPosition(itemLayer->getPosition() + scrollVec * 0.5f);
+        scrollVec -= scrollVec * 0.2f;
+*/
+        break;
+
     case TouchBegan:
+        // アイテム
         if(Item* item = GetTouchedItem(touchInfos[0].posBegan - itemLayer->getPosition())) {
             itemLayerPosBegan = itemLayer->getPosition();
             touchedItem = item;
             itemMove = Item::Stationary;
         }
-        break;
+/*        // 追加ウインドウタグ
+        else {   
+            Point pos = touchInfos[0].posBegan;
+            Point vec = pos - (addLayer->getPosition() + addTag->getPosition());
+            Rect buttonRect = addTag->getTextureRect();
+            if(vec.x > 0 && vec.x < buttonRect.size.width && fabs(vec.y) < buttonRect.size.height/2) {
+                if(addDisp) {
+                    addLayer->runAction(
+                        EaseIn::create(
+                            MoveTo::create(0.25f,Point(-240,0)),
+                            3
+                        )
+                    );                    
+                }
+                else {
+                    addLayer->runAction(
+                        EaseIn::create(
+                            MoveTo::create(0.25f,Point(0,0)),
+                            3
+                        )
+                    );                    
+                }
+            }
+        }
+*/        break;
     case TouchMoved:
-        if(touchedItem != NULL) {
+        if(ENABLE_MOVE_ITEM && touchedItem != NULL) {
             Point inputVec = touchInfos[0].posMoved - touchInfos[0].posBegan;
             Point layerPos = itemLayer->getPosition();
             Point movedPos = itemLayerPosBegan;
@@ -406,9 +630,10 @@ void Main::UpdateStateView() {
                 break;
             case Item::Scroll:
                 movedPos.y += inputVec.y;
-                inputVec = movedPos - layerPos;
-                movedPos = layerPos + inputVec * 0.5f;
+                scrollVec = (movedPos - layerPos) * 0.5f;
+                movedPos = layerPos + scrollVec;
                 itemLayer->setPosition(movedPos);
+                CCLOG("moved pos y %.2f", movedPos.y);
                 break;
             }
         }
@@ -416,31 +641,277 @@ void Main::UpdateStateView() {
     case TouchEnded:
     case TouchCancelled:
         if(touchedItem != NULL) {
-            if(itemMove == Item::Stationary) {
-                ISO4217 code = touchedItem->GetISOInfo()->code;
-                if(baseISO != code) {
-                    baseISO = code;
+            switch(itemMove) {
+            case Item::Stationary:
+                {
+                    ISO4217 code = touchedItem->GetISOInfo()->code;
+                    if(baseISO != code) {
+                        baseISO = code;
+                        baseValue = touchedItem->GetSaleValue();
+                        refreshItems();
+                    }
+                    else {
+                        state = CalcOpen;
+                        calcValue = baseValue;
+                        calcIntegerValue = 0;
+                        calcDecimalValue = 0;
+                        calcIntegerFigure = 0;
+                        calcDecimalFigure = 0;
+                        calcDecimalOn = false;
+                        calcNumberSet = false;
+                        calcEqual = true;
+                        calcType = CalcButton::None;
+                        DispCalcValue(true);
+
+                        calcLayer->runAction(
+                            EaseIn::create(
+                                MoveTo::create(0.25f,Point(visibleSize.width/2,visibleSize.height/2)),
+                                3
+                            )
+                        );
+                    }
                 }
-                else {
-                    state = CalcOpen;
-/*
-                    calcLayer->runAction(
-                        EaseIn::create(
-                            MoveTo::create(0.25f,Point(visibleSize.width/2,visibleSize.height/2)),
-                            3
-                        )
-                    );
-*/
-                }
+                break;
             }
             touchedItem = NULL;
+        }
+        else {
+            UpdateMessage();
         }
         break;
     }    
 }
 
 void Main::UpdateStateCalcOpen() {
+    ActionManager* actMan = calcLayer->getActionManager();
+    if(actMan->getNumberOfRunningActionsInTarget(calcLayer) == 0)
+        state = Calc;
+}
 
+void Main::UpdateStateCalc() {
+    Size visibleSize = Director::getInstance()->getVisibleSize();
+    CalcButton* nextCalcButton = NULL;
+    switch(touchInfos[0].type) {
+    case TouchBegan:
+/*
+        touchedCalcButton = GetTouchedCalcButton(touchInfos[0].posBegan);
+        if(touchedCalcButton != NULL) {
+
+        }
+*/
+        break;
+    case TouchMoved:
+        break;
+    case TouchEnded:
+    case TouchCancelled:
+        nextCalcButton = GetTouchedCalcButton(touchInfos[0].posBegan);
+        if(nextCalcButton != NULL) {
+            if(nextCalcButton->GetType() != CalcButton::Num) {
+                if(touchedCalcButton != NULL) {
+                    if(touchedCalcButton->IsType(calcType))
+                        touchedCalcButton->Unselect();
+                }
+                touchedCalcButton = nextCalcButton;
+            }
+            int number = nextCalcButton->GetNum();
+            CalcButton::Type type = nextCalcButton->GetType();
+            bool close = false;
+            bool equal = false;
+            switch(type) {
+            case CalcButton::Decide:
+                OperateCalcValue();
+                baseValue = calcValue;
+                close = true;
+                equal = true;
+                break;
+            case CalcButton::Cancel:
+                calcValue = baseValue;
+                close = true;
+                equal = true;
+                break;
+            case CalcButton::Num:
+                if(!calcNumberSet) {
+                    calcNumberSet = true;
+                    ResetInput();
+
+                    if(calcEqual) {
+                        calcType = CalcButton::None;
+                        calcEqual = false;
+                    }
+                }
+                if(calcDecimalOn) {
+                    calcDecimalValue = MIN(calcDecimalValue * 10 + number, 999999);
+                    calcDecimalFigure = MIN(calcDecimalFigure + 1, 6);
+                }
+                else {
+                    if(calcIntegerValue > 0 || number > 0) {
+                        calcIntegerValue = MIN(calcIntegerValue * 10 + number, 999999999);
+                        calcIntegerFigure = MIN(calcIntegerFigure + 1, 9);
+                    }
+                }
+                break;
+            case CalcButton::Clear:
+                if(calcIntegerFigure == 0 && calcIntegerValue == 0
+                && calcDecimalFigure == 0 && calcDecimalValue == 0)
+                {
+                    calcValue = 0;
+                    calcType = CalcButton::None;
+                }
+                else {
+                    ResetInput();
+                    calcNumberSet = false;                    
+                }
+                break;
+            case CalcButton::Equal:
+                OperateCalcValue(equal = true);
+                break;
+            case CalcButton::Delete:
+                if(!calcNumberSet) {
+                    calcNumberSet = true;
+                    ResetInput();
+                }
+                if(calcDecimalOn) {
+                    if(calcDecimalFigure > 0) {
+                        calcDecimalValue /= 10;
+                        calcDecimalFigure--;
+                    }
+                }
+                else {
+                    if(calcIntegerFigure > 0) {
+                        calcIntegerValue /= 10;
+                        calcIntegerFigure--;
+                    }
+                }
+                break;
+            case CalcButton::Decimal:
+                if(!calcNumberSet) {
+                    calcNumberSet = true;
+                    ResetInput();
+                }
+                calcDecimalOn = true;
+                break;
+            // 演算子ボタン
+            default:
+                OperateCalcValue();
+                calcType = type;
+                nextCalcButton->Select();
+                equal = true;
+                break;
+            }
+
+            if(close) {
+                calcLayer->runAction(
+                    EaseIn::create(
+                        MoveTo::create(0.25f,Point(visibleSize.width/2,-visibleSize.height/2)),
+                        3
+                    )
+                );
+                state = CalcClose;                
+            }
+            DispCalcValue(equal);
+        }
+        break;
+    }
+}
+
+void Main::UpdateStateCalcClose() {
+    ActionManager* actMan = calcLayer->getActionManager();
+    if(actMan->getNumberOfRunningActionsInTarget(calcLayer) == 0)
+        state = View;
+}
+
+// 電卓の値を表示する
+void Main::DispCalcValue(bool equal) {
+
+    char calcBuffer[64];
+    float mod;
+    if(modff(calcValue, &mod) > 0)
+        sprintf(calcBuffer, "%f", calcValue);
+    else sprintf(calcBuffer, "%.0f", calcValue);
+    calcBaseLabel->setString(calcBuffer);
+
+    if(equal) {
+        calcCalcLabel->setString(calcBuffer);
+        calcOperateLabel->setString("");
+    }
+    else {
+        char integerBuffer[64];
+        sprintf(integerBuffer, "%d", calcIntegerValue);
+        std::string buffer = integerBuffer;
+        if(calcDecimalOn) {
+            if(calcDecimalFigure > 0) {
+                char decimalFormat[64];
+                sprintf(decimalFormat, ".%%0%dd", calcDecimalFigure);
+                char decimalBuffer[64];
+                sprintf(decimalBuffer, decimalFormat, calcDecimalValue);
+                buffer += decimalBuffer;    
+            }
+            else {
+                buffer += ".";
+            }
+        }
+        calcCalcLabel->setString(buffer.c_str());
+
+        switch(calcType) {
+        case CalcButton::Add:
+            calcOperateLabel->setString("+");
+            break;
+        case CalcButton::Sub:
+            calcOperateLabel->setString("−");
+            break;
+        case CalcButton::Mul:
+            calcOperateLabel->setString("×");
+            break;
+        case CalcButton::Div:
+            calcOperateLabel->setString("÷");
+            break;
+        default:
+            calcOperateLabel->setString("");
+            break;
+        }    
+    }
+}
+
+// 電卓に入力した値を浮動小数で返す
+float Main::CalcInputValue() {
+    return calcIntegerValue + calcDecimalValue * pow(0.1f, calcDecimalFigure);
+}
+
+// 演算する
+void Main::OperateCalcValue(bool equal) {
+    if(calcNumberSet || equal) {
+        float inputValue = CalcInputValue();
+        switch(calcType) {
+        case CalcButton::Add:
+            calcValue += inputValue;
+            break;
+        case CalcButton::Sub:
+            calcValue -= inputValue;
+            if(calcValue < 0)
+                calcValue = 0;
+            break;
+        case CalcButton::Mul:
+            calcValue *= inputValue;
+            break;
+        case CalcButton::Div:
+            if(calcIntegerValue != 0 || calcDecimalValue != 0)
+                calcValue /= inputValue;
+            break;
+        default:
+            calcValue = inputValue;
+            break;
+        }
+    }
+    calcEqual = equal;
+    calcNumberSet = false;
+}
+
+void Main::ResetInput() {
+    calcDecimalValue = 
+    calcIntegerValue = 
+    calcDecimalFigure =
+    calcIntegerFigure = 0;
+    calcDecimalOn = false;
 }
 
 void Main::RemoveItem(Item* item) {
@@ -469,6 +940,14 @@ Item* Main::GetTouchedItem(Point pos) {
     return NULL;
 }
 
+// タッチした電卓ボタンを取得する
+CalcButton* Main::GetTouchedCalcButton(Point pos) {
+    for(int i = 0; i < calcButtons.size(); ++i)
+        if(calcButtons[i]->IsTouched(pos))
+            return calcButtons[i];
+    return NULL;
+}
+
 void Main::SetTouch(Touch* touch, TouchType type) {
     TouchInfo& touchInfo = touchInfos[touch->getID()];
     CCLOG("touched type %d", type);
@@ -488,6 +967,27 @@ void Main::SetTouch(Touch* touch, TouchType type) {
     touchInfo.type = type;
 }
 
+void Main::UpdateMessage() {
+    int message = (int)(100 * messageMotions.size() * CCRANDOM_0_1()) / 100;
+    
+    const MessageMotion& messageMotion = messageMotions[message];
+    charaMessage->setString(messageMotion.message.c_str());
+    charaMessage->setVisible(true);
+    charaBalloonSprite->setVisible(true);
+
+    const std::string& sprite = motionSpriteMap.find(messageMotion.motion)->second;
+//    charaUnitSprite->setTexture(sprite.c_str());
+
+    Texture2D *tex = TextureCache::sharedTextureCache()->addImage(sprite.c_str());
+    charaUnitSprite->setTexture(tex);
+    Size contentSize = tex->getContentSize();
+    charaUnitSprite->setTextureRect(CCRectMake(0, 0, contentSize.width, contentSize.height));
+
+
+
+
+}
+
 bool Item::init(const ISOInfo* isoInfo) {
     Node::init();
 
@@ -495,23 +995,24 @@ bool Item::init(const ISOInfo* isoInfo) {
     spriteFrame = Sprite::create("flatitem.png");
     addChild(spriteFrame);
     Rect frameRect = spriteFrame->getTextureRect();
-
+    itemHeight = frameRect.size.height;
+/*
     // フラグ
     spriteFlag = Sprite::create(isoInfo->flag.c_str());
     spriteFlag->setPosition(Point(24, frameRect.size.height / 2));
     spriteFlag->setAnchorPoint(Point(0,0.5f));
     spriteFlag->setScale(0.4f);
     spriteFrame->addChild(spriteFlag);
-
+*/
     // 名前
-    labelCountry = LabelTTF::create(isoInfo->country.c_str(), "Arial", 24);
-    labelCountry->setPosition(Point(160, frameRect.size.height / 4 * 3));
+    labelCountry = Label::createWithSystemFont(isoInfo->country.c_str(), "Arial", 32);
+    labelCountry->setPosition(Point(48, frameRect.size.height / 2));
     labelCountry->setAnchorPoint(Point(0,0.5f));
     spriteFrame->addChild(labelCountry);
 
     // 数値
-    labelValue = LabelTTF::create(isoInfo->unit.c_str(), "Arial", 48);
-    labelValue->setPosition(Point(frameRect.size.width - 16, frameRect.size.height / 4));
+    labelValue = Label::createWithSystemFont(isoInfo->unit.c_str(), "Arial", 32);
+    labelValue->setPosition(Point(frameRect.size.width - 48, frameRect.size.height / 2));
     labelValue->setAnchorPoint(Point(1,0.5f));
     spriteFrame->addChild(labelValue);
 
@@ -519,15 +1020,21 @@ bool Item::init(const ISOInfo* isoInfo) {
     return true;
 }
 
+void Item::SetColor(Color3B color) {
+    spriteFrame->setColor(color);
+}
+
 void Item::refresh(const std::map<ISO4217, RateData>& rates, float value) {
     char valueBuffer[64];
     if(rates.find(isoInfo->code) != rates.end()) {
         const RateData& rateData = rates.find(isoInfo->code)->second;
-        sprintf(valueBuffer, "%.1f %s", value * rateData.sale, isoInfo->unit.c_str());
+        saleValue = value * rateData.sale;
+        sprintf(valueBuffer, "%.1f %s", saleValue, isoInfo->unit.c_str());
         labelCountry->setColor(Color3B::WHITE);
         labelValue->setColor(Color3B::WHITE);
     }
     else {
+        saleValue = value;
         sprintf(valueBuffer, "%.1f %s", value, isoInfo->unit.c_str());        
         labelCountry->setColor(Color3B::YELLOW);
         labelValue->setColor(Color3B::YELLOW);
@@ -541,29 +1048,31 @@ void Item::Remove() {
 
 bool Item::IsTouched(Point pos) {
     Point vec = pos - _position;
-    if(fabs(vec.x) < 320 && fabs(vec.y) < 64) {
-        CCLOG("touch %s", isoInfo->country.c_str());
-        return true;
-    }
-    return false;
+    return (fabs(vec.x) < 320 && fabs(vec.y) < itemOffset/2);
 }
 
 bool CalcButton::init(
-    Type type, int number, Color3B baseColor, 
-    std::string title, std::string sprite
+    const Data* data
 )
 {
     Node::init();
 
-    buttonSprite = Sprite::create(sprite);
-    buttonSprite->setColor(baseColor);
+    buttonSprite = Sprite::create(data->sprite);
+    buttonSprite->setColor(data->baseColor);
     addChild(buttonSprite);
-    titleLabel = LabelTTF::create(title.c_str(), "Arial", 48);
-    titleLabel->setPosition(Point(80,80));
+    
+    Rect buttonRect = buttonSprite->getTextureRect();
+    titleLabel = Label::createWithSystemFont(data->title.c_str(), "Arial", 48);
+    titleLabel->setPosition(buttonRect.size.width/2,buttonRect.size.height/2);
     buttonSprite->addChild(titleLabel);
 
-    this->type = type;
-    this->number = number;
-    this->baseColor = baseColor;    
+    this->setPosition(data->position);
+    this->data = data;
     return true;
+}
+
+bool CalcButton::IsTouched(Point pos) {
+    Point vec = pos - (_position + buttonSprite->getPosition());
+    Rect buttonRect = buttonSprite->getTextureRect();
+    return (fabs(vec.x) < buttonRect.size.width/2 && fabs(vec.y) < buttonRect.size.height/2);
 }
