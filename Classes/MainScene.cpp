@@ -1,6 +1,7 @@
 #include "MainScene.h"
 #include "spine/Json.h"
 
+#include <SimpleAudioEngine.h>
 //using namespace extension;
 using namespace cocos2d::network;
 
@@ -238,6 +239,94 @@ static const std::vector<MessageMotion> messageMotions = {
     { "ダメ",             Main::MotionArmsCross },
 };
 
+static const std::string voicePath = "/voices/";
+static const std::vector<std::string> voiceFiles = {
+    "voice0000.mp3",
+    "voice0001.mp3",
+    "voice0002.mp3",
+    "voice0003.mp3",
+    "voice0004.mp3",
+    "voice0005.mp3",
+    "voice0006.mp3",
+    "voice0007.mp3",
+    "voice0008.mp3",
+    "voice0009.mp3",
+    "voice0011.mp3",
+    "voice0012.mp3",
+    "voice0013.mp3",
+    "voice0014.mp3",
+    "voice0015.mp3",
+    "voice0016.mp3",
+    "voice0017.mp3",
+    "voice0018.mp3",
+    "voice0019.mp3",
+    "voice0021.mp3",
+    "voice0022.mp3",
+    "voice0023.mp3",
+    "voice0024.mp3",
+    "voice0025.mp3",
+    "voice0026.mp3",
+    "voice0027.mp3",
+    "voice0028.mp3",
+    "voice0029.mp3",
+    "voice0031.mp3",
+    "voice0032.mp3",
+    "voice0033.mp3",
+    "voice0034.mp3",
+    "voice0035.mp3",
+    "voice0036.mp3",
+    "voice0037.mp3",
+    "voice0038.mp3",
+    "voice0039.mp3",
+    "voice0040.mp3",
+    "voice0099.mp3",
+    "voice0100.mp3",
+    "voice0101.mp3",
+    "voice0102.mp3",
+    "voice0103.mp3",
+    "voice0104.mp3",
+    "voice0105.mp3",
+    "voice0106.mp3",
+    "voice0107.mp3",
+    "voice0108.mp3",
+    "voice0109.mp3",
+    "voice0110.mp3",
+    "voice0111.mp3",
+    "voice0112.mp3",
+    "voice0113.mp3",
+    "voice0201.mp3",
+    "voice0202.mp3",
+    "voice0203.mp3",
+    "voice0204.mp3",
+    "voice0205.mp3",
+    "voice0206.mp3",
+    "voice0207.mp3",
+    "voice0208.mp3",
+    "voice0209.mp3",
+    "voice0210.mp3",
+    "voice0211.mp3",
+    "voice0212.mp3",
+    "voice0213.mp3",
+    "voice0214.mp3",
+    "voice0215.mp3",
+    "voice0216.mp3",
+    "voice0217.mp3",
+    "voice0218.mp3",
+    "voice0219.mp3",
+    "voice0220.mp3",
+    "voice0221.mp3",
+    "voice0222.mp3",
+    "voice0223.mp3",
+    "voice0224.mp3",
+    "voice0225.mp3",
+    "voice0226.mp3",
+    "voice0227.mp3",
+    "voice0228.mp3",
+    "voice0229.mp3",
+    "voice0230.mp3",
+    "voice0231.mp3",
+};
+
 Main* Main::instance = NULL;
 
 Scene* Main::createScene()
@@ -345,6 +434,12 @@ bool Main::init()
     calcDecimalFigure = 0;
     calcDecimalOn = false;
     calcType = CalcButton::None;
+
+    CocosDenshion::SimpleAudioEngine* audioEngine = CocosDenshion::SimpleAudioEngine::getInstance();
+
+    for(int i = 0; i < voiceFiles.size(); ++i) {
+        audioEngine->preloadEffect((voicePath + voiceFiles[i]).c_str());
+    }
 
     // タッチイベント
     auto elta = EventListenerTouchAllAtOnce::create();
@@ -970,6 +1065,10 @@ void Main::SetTouch(Touch* touch, TouchType type) {
 void Main::UpdateMessage() {
     int message = (int)(100 * messageMotions.size() * CCRANDOM_0_1()) / 100;
     
+    CocosDenshion::SimpleAudioEngine* audioEngine = CocosDenshion::SimpleAudioEngine::getInstance();
+    int voice = (int)(100 * voiceFiles.size() * CCRANDOM_0_1()) / 100;
+    audioEngine->playEffect((voiceFiles[voice]).c_str());
+
     const MessageMotion& messageMotion = messageMotions[message];
     charaMessage->setString(messageMotion.message.c_str());
     charaMessage->setVisible(true);
