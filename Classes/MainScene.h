@@ -216,18 +216,56 @@ enum Voice {
     Voice8000,
     Voice9000,
     Voice10000,
-    VoiceYen,
+    VoiceTen,
     VoiceSen,
+    
     VoiceJPY,
     VoiceDollar,
     VoiceEUR,
     VoicePond,
     VoiceCHF,
+    VoiceUSD,
     VoiceCAD,
     VoiceHKD,
     VoiceAUD,
     VoiceTWD,
     VoiceCNY,
+    VoiceKRW,
+    VoiceBYR,
+
+    VoiceHaa,
+    VoiceNandayo,
+    VoiceNaniyattendayo,
+    VoiceMatakayo,
+    VoiceSagatta,
+    VoiceFumuyo,
+    VoiceMendokuse,
+    VoiceMoiidaro,
+    VoiceMinna,
+    VoiceOwari,
+    VoiceButtobasu,
+    VoiceKimoi,
+    VoiceAshiata,
+    VoiceNansuka,
+    VoiceDame,
+    VoiceKisama,
+    VoiceOi,
+    VoiceWatashida,
+    VoiceAan,
+    VoiceZakenna,
+    VoiceKaereba,
+    VoiceYametoke,
+    VoiceMirunoka,
+    VoiceHontoni,
+    VoiceIikotonai,
+    VoiceHora,
+    VoiceZama,
+    VoiceIikimi,
+    VoiceOshioki,
+    VoiceKamisama,
+    VoiceAhaha,
+
+    VoiceNone,
 };
 
 typedef const std::pair<std::string, ISO4217> Code2ISO;
@@ -238,6 +276,8 @@ struct ISOInfo {
     std::string unit;
     std::string country;
     std::string flag;
+    Voice voice1;
+    Voice voice2;
 };
 
 typedef const std::pair<ISO4217, ISOInfo> ISOInfoPair;
@@ -276,6 +316,8 @@ public:
     }
     void refresh(const std::map<ISO4217, RateData>& rates, float value);
     bool IsTouched(Point pos);
+    bool IsTouchedSpeak(Point pos);
+    bool IsTouchedMoney(Point pos);
     void Remove();
     const ISOInfo* GetISOInfo() { return isoInfo; }
     float GetSaleValue() { return saleValue; }
@@ -416,6 +458,7 @@ private:
     void ResetInput();
 
     void UpdateMessage();
+    void ReadValue(Item* touchedItem);
 
     CalcButton* GetTouchedCalcButton(Point pos);
 
@@ -423,12 +466,14 @@ private:
     void UpdateStateCalcOpen();
     void UpdateStateCalc();
     void UpdateStateCalcClose();
+    void UpdateStateDispVersion();
 
 	static Main* instance;
 	std::map<ISO4217, std::map<ISO4217, RateData> > rates;
 
 	TouchInfo touchInfos[MaxTouchNum];
 	float fromStartSec;
+    bool reloading;
 
     // 状態
     enum State {
@@ -436,10 +481,12 @@ private:
         CalcOpen,
         Calc,
         CalcClose,
+        DispVersion,
     } state;
 
     // 為替
 	Layer* itemLayer;
+    Label* rateLabel;
 	Point itemLayerPosBegan;
 	std::vector<Item*> items;
 
@@ -449,8 +496,14 @@ private:
     Item::Move itemMove;
     Point scrollVec;
 
+    // 読み上げ
+    Item* readingItem;
+    int readingSoundId;
+    float readingSec;
+    std::list<Voice> readingVoices;
+
     // フッタ
-    Sprite* spriteMenu;
+    Sprite* spriteMenu; 
     Sprite* spriteReload;
     Sprite* spriteSettings;
 
@@ -463,6 +516,7 @@ private:
     std::vector<CalcButton*> calcButtons;
     CalcButton* touchedCalcButton;
 
+    ISO4217 calcISO;
     float calcValue;
     uint calcIntegerValue;
     uint calcDecimalValue;
@@ -474,17 +528,14 @@ private:
     CalcButton::Type calcType;
     CalcButton::Type calcPrevType;
 
-    // 追加
-    LayerColor* addLayer;
-    Sprite* addTag;
-    bool addDisp;
-
     // キャラ
     Layer* charaLayer;
     Sprite* charaUnitSprite;
     Sprite* charaBalloonSprite;
-    Sprite* charaSpeakSprite;
     Label* charaMessage;
+
+    Sprite* dialogFrame;
+    Label* dialogMessage;
 };
 
 typedef const std::pair<Main::Motion, std::string> MotionSpritePair;
@@ -493,6 +544,7 @@ typedef const std::map<Main::Motion, std::string> MotionSpriteMap;
 struct MessageMotion {
     std::string message;
     Main::Motion motion;
+    Voice voice;
 };
 
 #endif // __MAIN_SCENE_H__

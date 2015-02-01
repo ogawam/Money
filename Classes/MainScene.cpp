@@ -1,5 +1,6 @@
 #include "MainScene.h"
 #include "spine/Json.h"
+#include <time.h>
 
 #include <SimpleAudioEngine.h>
 //using namespace extension;
@@ -8,6 +9,69 @@ using namespace cocos2d::network;
 #define ENABLE_MOVE_ITEM false
 
 static const float itemOffset = 160;
+static const float readEndSec = 0.5f;
+
+CocosDenshion::SimpleAudioEngine* audioEngine = NULL;
+
+inline std::list<Voice> ArrangeValueVoices(int value) {
+    std::list<Voice> readingVoices;
+    int figure = 1;
+    while(figure < 100000000 && figure <= value) {
+        int figureValue = (value / figure) % 10;
+
+        if(figure == 10000)
+            readingVoices.push_front(Voice10000);
+
+        if(figureValue > 0) {
+            figureValue--;
+
+            switch(figure) {
+            case 1:
+            case 10000:
+                readingVoices.push_front((Voice)(Voice1 + figureValue));
+                break;
+            case 10:
+            case 100000:
+                readingVoices.push_front((Voice)(Voice10 + figureValue));
+                break;
+            case 100:
+            case 1000000:
+                readingVoices.push_front((Voice)(Voice100 + figureValue));
+                break;
+            case 1000:
+            case 10000000:
+                readingVoices.push_front((Voice)(Voice1000 + figureValue));
+                break;
+            }            
+        }
+        figure *= 10;
+    }
+    return readingVoices;
+}
+
+inline std::string GetCurrentTime() {
+
+    time_t timer;
+    time_t now = time(&timer);
+    time_t seconds = now % 60;
+    time_t minutes = (now - seconds) / 60;
+    time_t hour = ((minutes - (minutes % 60)) / 60) + 9;
+
+    char strTime[128];
+    sprintf(strTime, "現在の為替情報[%02d:%02d]", hour % 24, minutes % 60);
+    return std::string(strTime);
+}
+
+inline bool IsTouchSprite(Sprite* sprite, Point position) {
+
+    Rect rect = sprite->getTextureRect();
+    Point acp = sprite->getAnchorPoint();
+    Point pos = sprite->getPosition();    
+    pos.x += (-0.5f + acp.x) * rect.size.width;
+    pos.y += (-0.5f + acp.y) * rect.size.height;
+    Point vec = position -  pos;
+    return fabs(vec.x) < rect.size.width / 2 && fabs(vec.y) < rect.size.height /2;
+}
 
 static const Code2ISOMap c2is = {
     Code2ISO("AED", AED),
@@ -179,15 +243,15 @@ static const Code2ISOMap c2is = {
 };
 
 static const ISOInfoMap isoInfoMap = {
-    ISOInfoPair(GBP, ISOInfo{ GBP, "£", "UKポンド", "gbp.png" }),
-    ISOInfoPair(NZD, ISOInfo{ NZD, "$", "ニュージーランド・ドル", "nzd.png" }),
-    ISOInfoPair(CAD, ISOInfo{ CAD, "$", "カナダ・ドル", "cad.png" }),
-    ISOInfoPair(JPY, ISOInfo{ JPY, "¥", "日本円", "jpy.png" }),
-    ISOInfoPair(AUD, ISOInfo{ AUD, "$", "オーストラリア・ドル", "aud.png" }),
-    ISOInfoPair(EUR, ISOInfo{ EUR, "€", "ユーロ", "eur.png" }),
-    ISOInfoPair(USD, ISOInfo{ USD, "$", "アメリカ合衆国ドル", "usd.png" }),
-    ISOInfoPair(ZAR, ISOInfo{ ZAR, "R", "ランド", "zar.png" }),
-    ISOInfoPair(CHF, ISOInfo{ CHF, "₣", "スイス・フラン", "chf.png" }),
+    ISOInfoPair(GBP, ISOInfo{ GBP, "£", "UKポンド", "icon_list_speak.png" }),
+    ISOInfoPair(NZD, ISOInfo{ NZD, "$", "ニュージーランド・ドル", "icon_list_speak.png" }),
+    ISOInfoPair(CAD, ISOInfo{ CAD, "$", "カナダ・ドル", "icon_list_speak.png" }),
+    ISOInfoPair(JPY, ISOInfo{ JPY, "¥", "日本円", "icon_list_speak.png", VoiceJPY, VoiceSen }),
+    ISOInfoPair(AUD, ISOInfo{ AUD, "$", "オーストラリア・ドル", "icon_list_speak.png", VoiceNone, VoiceNone }),
+    ISOInfoPair(EUR, ISOInfo{ EUR, "€", "ユーロ", "icon_list_speak.png", VoiceEUR, VoiceNone }),
+    ISOInfoPair(USD, ISOInfo{ USD, "$", "アメリカ合衆国ドル", "icon_list_speak.png", VoiceUSD, VoiceDollar }),
+    ISOInfoPair(ZAR, ISOInfo{ ZAR, "R", "ランド", "icon_list_speak.png" }),
+    ISOInfoPair(CHF, ISOInfo{ CHF, "₣", "スイス・フラン", "icon_list_speak.png", VoiceCHF, VoiceNone }),
 };
 
 static const CalcButton::Data calcDatas[] = {
@@ -215,28 +279,43 @@ static const CalcButton::Data calcDatas[] = {
 };
 
 static const MotionSpriteMap motionSpriteMap = {
-    MotionSpritePair( Main::MotionNormal,       "kc_01_default.png" ),
-    MotionSpritePair( Main::MotionPointing,     "kc_02_ubi.png" ),
-    MotionSpritePair( Main::MotionArmsCross,    "kc_03_ude.png" ),
-    MotionSpritePair( Main::MotionMatroos,      "kc_04_sea.png" ),
+    MotionSpritePair( Main::MotionNormal, "kc_01_default.png" ),
+    MotionSpritePair( Main::MotionPointing, "kc_02_ubi.png" ),
+    MotionSpritePair( Main::MotionArmsCross, "kc_03_ude.png" ),
+    MotionSpritePair( Main::MotionMatroos, "kc_04_sea.png" ),
 };
 
 static const std::vector<MessageMotion> messageMotions = {
-    { "はぁ！",            Main::MotionArmsCross },
-    { "なんだよ",          Main::MotionNormal },
-    { "なにやってんだよ！", Main::MotionPointing },
-    { "またかよ",          Main::MotionPointing },
-    { "下がった",          Main::MotionMatroos },
-    { "踏むよ！",          Main::MotionPointing },
-    { "めんどくせ〜な",     Main::MotionArmsCross },
-    { "もういいだろ",       Main::MotionArmsCross },
-    { "見んな",            Main::MotionArmsCross },
-    { "終わり",            Main::MotionMatroos },
-    { "ぶっとばす",         Main::MotionPointing },
-    { "キモイ",            Main::MotionNormal },
-    { "明日にしろ",        Main::MotionNormal },
-    { "なんすか？",        Main::MotionArmsCross },
-    { "ダメ",             Main::MotionArmsCross },
+    { "ハァ！？", Main::MotionArmsCross, VoiceHaa },
+    { "なんだよ", Main::MotionNormal, VoiceNandayo },
+    { "なにやってんだよ！", Main::MotionPointing, VoiceNaniyattendayo },
+    { "またかよ", Main::MotionPointing, VoiceMatakayo },
+    { "下がった", Main::MotionMatroos, VoiceSagatta },
+    { "踏むよ！", Main::MotionPointing, VoiceFumuyo },
+    { "めんどくせ〜な", Main::MotionArmsCross, VoiceMendokuse },
+    { "もういいだろ", Main::MotionArmsCross, VoiceMoiidaro },
+    { "見んな", Main::MotionArmsCross, VoiceMinna },
+    { "終わり", Main::MotionMatroos, VoiceOwari },
+    { "ぶっとばす", Main::MotionPointing, VoiceButtobasu },
+    { "キモイ", Main::MotionNormal, VoiceKimoi },
+    { "明日にしろ", Main::MotionNormal, VoiceAshiata },
+    { "なんすか？", Main::MotionArmsCross, VoiceNansuka },
+    { "貴様・・・", Main::MotionArmsCross, VoiceKisama },
+    { "おい", Main::MotionArmsCross, VoiceOi },
+    { "私だ", Main::MotionArmsCross, VoiceWatashida },
+    { "ああん？", Main::MotionArmsCross, VoiceAan },
+    { "ざけんな", Main::MotionArmsCross, VoiceZakenna },
+    { "帰れバーカ", Main::MotionArmsCross, VoiceKaereba },
+    { "やめとけ", Main::MotionArmsCross, VoiceYametoke },
+    { "見るのか？", Main::MotionArmsCross, VoiceMirunoka },
+    { "ほんっと〜に\n見るのか？", Main::MotionArmsCross, VoiceHontoni },
+    { "良いコトないぞ？", Main::MotionArmsCross, VoiceIikotonai },
+    { "ほ〜らwww", Main::MotionArmsCross, VoiceHora },
+    { "ざまぁみろwww", Main::MotionArmsCross, VoiceZama },
+    { "イイ気味だwww", Main::MotionArmsCross, VoiceIikimi },
+    { "ヒールで\nお仕置きしてやる", Main::MotionMatroos, VoiceOshioki },
+    { "私をなんと心得る？\n神谷様だ", Main::MotionArmsCross, VoiceKamisama },
+    { "アッハハハハハ！", Main::MotionArmsCross, VoiceAhaha },
 };
 
 static const std::string voicePath = "/voices/";
@@ -346,6 +425,9 @@ Scene* Main::createScene()
 
 void Main::httpRequest()
 {
+    if(reloading)
+        return;
+
     auto httpRequest = new HttpRequest();
     
     httpRequest->setUrl("http://www.gaitameonline.com/rateaj/getrate");
@@ -353,13 +435,14 @@ void Main::httpRequest()
     httpRequest->setResponseCallback(this, httpresponse_selector(Main::callback));
     
     network::HttpClient::getInstance()->send(httpRequest);
+    reloading = true;
 }
 
 void Main::callback(HttpClient* sender, HttpResponse* response)
 {
     std::vector<char>* data = response->getResponseData();
     std::string result(data->begin(), data->end());
-//    CCLOG(result.c_str());
+    CCLOG(result.c_str());
 
     Json* json = Json_create(result.c_str());
     if(json != NULL) {
@@ -401,6 +484,9 @@ void Main::callback(HttpClient* sender, HttpResponse* response)
     }
     
     refreshItems();
+
+    rateLabel->setString(GetCurrentTime());
+    reloading = false;
 }
 
 void Main::refreshItems() {
@@ -425,8 +511,12 @@ bool Main::init()
     fromStartSec = 0;
     EventDispatcher* eventDispatcher = Director::getInstance()->getEventDispatcher();
     touchedItem = NULL;
+    readingItem = NULL;
+    readingSoundId = 0;
     touchedCalcButton = NULL;
 
+    reloading = false;
+    calcISO = USD;
     calcValue = 0;
     calcIntegerValue = 0;
     calcDecimalValue = 0;
@@ -435,7 +525,7 @@ bool Main::init()
     calcDecimalOn = false;
     calcType = CalcButton::None;
 
-    CocosDenshion::SimpleAudioEngine* audioEngine = CocosDenshion::SimpleAudioEngine::getInstance();
+    audioEngine = CocosDenshion::SimpleAudioEngine::getInstance();
 
     for(int i = 0; i < voiceFiles.size(); ++i) {
         audioEngine->preloadEffect((voicePath + voiceFiles[i]).c_str());
@@ -474,14 +564,14 @@ bool Main::init()
 
     scheduleUpdate();
 
-    // モック
-    Sprite* mock = Sprite::create("mockup.jpg");
-    mock->setPosition(visibleSize.width/2, visibleSize.height/2);
-    addChild(mock);
-
     Sprite* wallPaper = Sprite::create("wallpaper.png");
     wallPaper->setPosition(visibleSize.width/2, visibleSize.height/2);
     addChild(wallPaper);
+
+    // 取得時刻
+    rateLabel = Label::createWithSystemFont(GetCurrentTime(),"Arial",36);
+    rateLabel->setPosition(visibleSize.width/2, visibleSize.height - 96);
+    wallPaper->addChild(rateLabel);
 
     // アイテム
     itemLayer = Layer::create();
@@ -492,12 +582,10 @@ bool Main::init()
         USD,
         EUR,
         CHF,
-        GBP,
-        ZAR,
         ISO4217_NUM
     };
 
-    Point itemPosition = Point(visibleSize.width/2, visibleSize.height - 128);
+    Point itemPosition = Point(visibleSize.width/2, visibleSize.height - 176);
     for(int i = 0; firstItems[i] != ISO4217_NUM; ++i) {
         const ISOInfo& isoInfo = isoInfoMap.find(firstItems[i])->second;
         Item* item = Item::create(&isoInfo);
@@ -521,27 +609,22 @@ bool Main::init()
     addChild(charaLayer);
 
     charaUnitSprite = Sprite::create("kc_01_default.png");
-    charaUnitSprite->setPosition(520, 128);
-    charaUnitSprite->setScale(0.75f);
+    charaUnitSprite->setPosition(528, 112);
+    charaUnitSprite->setScale(0.7f);
     charaUnitSprite->setAnchorPoint(Point(0.5f,0));
     charaLayer->addChild(charaUnitSprite);
 
     charaBalloonSprite = Sprite::create("balloon.png");
-    charaBalloonSprite->setPosition(464, 240);
+    charaBalloonSprite->setPosition(464, 224);
     charaBalloonSprite->setAnchorPoint(Point(1,0.5f));
     charaBalloonSprite->setVisible(false);
     charaLayer->addChild(charaBalloonSprite);
     
-    charaMessage = Label::createWithSystemFont("杉田さん\nひどいっすわー","Arial",40);
+    charaMessage = Label::createWithSystemFont("","Arial",40);
     charaMessage->setColor(Color3B::BLACK);
     charaMessage->setPosition(192, 73);
     charaMessage->setVisible(false);
     charaBalloonSprite->addChild(charaMessage);    
-
-    charaSpeakSprite = Sprite::create("sound.png");
-    charaSpeakSprite->setPosition(visibleSize.width/2, 400);
-    charaLayer->addChild(charaSpeakSprite);
-
 
     // フッタ
     Sprite* footer = Sprite::create("footer.png");
@@ -550,15 +633,15 @@ bool Main::init()
     Rect footerRect = footer->getTextureRect();
     addChild(footer);
 
-    spriteMenu = Sprite::create("menu.png");
+    spriteMenu = Sprite::create("icon_speak.png");
     spriteMenu->setPosition(visibleSize.width/6, footerRect.size.height/2);
     footer->addChild(spriteMenu);
 
-    spriteReload = Sprite::create("reload.png");
+    spriteReload = Sprite::create("icon_reload.png");
     spriteReload->setPosition(visibleSize.width/2, footerRect.size.height/2);
     footer->addChild(spriteReload);
 
-    spriteSettings = Sprite::create("settings.png");
+    spriteSettings = Sprite::create("icon_setting.png");
     spriteSettings->setPosition(visibleSize.width/6*5, footerRect.size.height/2);
     footer->addChild(spriteSettings);
 
@@ -591,32 +674,22 @@ bool Main::init()
         calcButtons.push_back(calcButton);
         calcBackSprite->addChild(calcButton);
     }
-/*
-    // 追加
-    addDisp = false;
 
-    addLayer = LayerColor::create(Color4B::BLACK);
-    addLayer->setOpacity(127);
-    addLayer->changeWidthAndHeight(240,1136);
-    addLayer->setPosition(-240,0);
-    addChild(addLayer);
-
-    addTag = Sprite::create("add_tag.png");
-    addTag->setAnchorPoint(Point(0,0.5f));
-    addTag->setPosition(0,1024);
-    addLayer->addChild(addTag);
-*/
+    dialogFrame = Sprite::create("dialog.png");
+    dialogFrame->setPosition(visibleSize.width/2, visibleSize.height/2);
+    dialogFrame->setOpacity(127);
+    Rect frameRect = dialogFrame->getTextureRect();
+    dialogMessage = Label::createWithSystemFont("つんでれ為替\nver 1.0.0","Arial",48);
+    dialogMessage->setPosition(frameRect.size.width/2,frameRect.size.width/2);
+    dialogFrame->addChild(dialogMessage);
+    dialogFrame->setVisible(false);
+    addChild(dialogFrame);
 
     return true;
 }
 
 float repeatTime = 0;
 void Main::update(float deltaTime) {
-    fromStartSec += deltaTime;
-    repeatTime += deltaTime;
-    if(repeatTime > 5) {
-        httpRequest();
-    }    
 
     switch(state) {
     case View:
@@ -631,6 +704,9 @@ void Main::update(float deltaTime) {
     case CalcClose:
         UpdateStateCalcClose();
         break;        
+    case DispVersion:
+        UpdateStateDispVersion();
+        break;
     }
 
     // TouchBeganはupdate後にTouchStationaryに移行する
@@ -644,6 +720,25 @@ void Main::update(float deltaTime) {
             touchInfos[i].type = TouchNone;
             break;
         }
+    }
+
+    if(readingItem != NULL) {
+
+        if(readingSoundId > 0) {
+            if(readingSec > readEndSec) {
+                readingSec = 0;
+                readingSoundId = 0;
+            }
+        }
+        else if(readingVoices.size() > 0) {
+            readingSoundId = audioEngine->playEffect((voiceFiles[readingVoices.front()]).c_str());
+            readingVoices.pop_front();
+        }
+        else {
+            readingItem = NULL;
+        }
+
+        readingSec += deltaTime;
     }
 }
 
@@ -660,7 +755,7 @@ void Main::UpdateStateView() {
             scrollVec = (movedPos - layerPos) * 0.5f;
             movedPos = layerPos + scrollVec;
             itemLayer->setPosition(movedPos);
-        }
+        }        
 /*
         if(items.size() > 0) {
             float topHeight = itemLayer->getPosition().y + items[0]->getPosition().y;
@@ -680,31 +775,7 @@ void Main::UpdateStateView() {
             touchedItem = item;
             itemMove = Item::Stationary;
         }
-/*        // 追加ウインドウタグ
-        else {   
-            Point pos = touchInfos[0].posBegan;
-            Point vec = pos - (addLayer->getPosition() + addTag->getPosition());
-            Rect buttonRect = addTag->getTextureRect();
-            if(vec.x > 0 && vec.x < buttonRect.size.width && fabs(vec.y) < buttonRect.size.height/2) {
-                if(addDisp) {
-                    addLayer->runAction(
-                        EaseIn::create(
-                            MoveTo::create(0.25f,Point(-240,0)),
-                            3
-                        )
-                    );                    
-                }
-                else {
-                    addLayer->runAction(
-                        EaseIn::create(
-                            MoveTo::create(0.25f,Point(0,0)),
-                            3
-                        )
-                    );                    
-                }
-            }
-        }
-*/        break;
+        break;
     case TouchMoved:
         if(ENABLE_MOVE_ITEM && touchedItem != NULL) {
             Point inputVec = touchInfos[0].posMoved - touchInfos[0].posBegan;
@@ -734,20 +805,31 @@ void Main::UpdateStateView() {
         }
         break;
     case TouchEnded:
-    case TouchCancelled:
         if(touchedItem != NULL) {
+            Point posEnded = touchInfos[0].posEnded - itemLayer->getPosition();
             switch(itemMove) {
             case Item::Stationary:
-                {
+                // スピーカーアイコンをタッチ？
+                if(touchedItem->IsTouchedSpeak(posEnded)) {
+                    // 一兆以下なら読み上げ
+                    if(touchedItem->GetSaleValue() < 100000000)
+                        ReadValue(touchedItem);
+                }
+                // それ以外をタッチ？
+                else { 
                     ISO4217 code = touchedItem->GetISOInfo()->code;
-                    if(baseISO != code) {
-                        baseISO = code;
-                        baseValue = touchedItem->GetSaleValue();
-                        refreshItems();
-                    }
-                    else {
+
+                    // コードがアクティブでなければアクティブへ
+//                    if(baseISO != code) {
+//                        baseISO = code;
+//                        baseValue = touchedItem->GetSaleValue();
+//                        refreshItems();
+//                    }
+                    // コードがアクティブなら計算機へ
+//                    else {
                         state = CalcOpen;
-                        calcValue = baseValue;
+                        calcISO = code;
+                        calcValue = touchedItem->GetSaleValue();//baseValue;
                         calcIntegerValue = 0;
                         calcDecimalValue = 0;
                         calcIntegerFigure = 0;
@@ -764,15 +846,29 @@ void Main::UpdateStateView() {
                                 3
                             )
                         );
-                    }
+//                    }
                 }
                 break;
             }
             touchedItem = NULL;
         }
-        else {
+        // メニューボタン
+        else if(IsTouchSprite(spriteMenu, touchInfos[0].posEnded)) {
             UpdateMessage();
         }
+        // リロードボタン
+        else if(IsTouchSprite(spriteReload, touchInfos[0].posEnded)) {
+            httpRequest();
+        }
+        // 設定ボタン
+        else if(IsTouchSprite(spriteSettings, touchInfos[0].posEnded)) {
+            dialogFrame->setVisible(true);
+
+            state = DispVersion;
+        }
+        break;
+    case TouchCancelled:
+        touchedItem = NULL;
         break;
     }    
 }
@@ -815,7 +911,9 @@ void Main::UpdateStateCalc() {
             switch(type) {
             case CalcButton::Decide:
                 OperateCalcValue();
-                baseValue = calcValue;
+                if(baseISO != calcISO)
+                    baseValue = calcValue / rates[baseISO][calcISO].sale;
+                else baseValue = calcValue;
                 close = true;
                 equal = true;
                 break;
@@ -895,6 +993,7 @@ void Main::UpdateStateCalc() {
             }
 
             if(close) {
+                refreshItems();
                 calcLayer->runAction(
                     EaseIn::create(
                         MoveTo::create(0.25f,Point(visibleSize.width/2,-visibleSize.height/2)),
@@ -915,14 +1014,25 @@ void Main::UpdateStateCalcClose() {
         state = View;
 }
 
+void Main::UpdateStateDispVersion() {
+    if(touchInfos[0].type == TouchEnded
+    || touchInfos[0].type == TouchCancelled)
+    {
+        dialogFrame->setVisible(false);
+        state = View;
+    }
+}
+
 // 電卓の値を表示する
 void Main::DispCalcValue(bool equal) {
+
+    const ISOInfo& isoInfo = isoInfoMap.find(calcISO)->second;
 
     char calcBuffer[64];
     float mod;
     if(modff(calcValue, &mod) > 0)
-        sprintf(calcBuffer, "%f", calcValue);
-    else sprintf(calcBuffer, "%.0f", calcValue);
+        sprintf(calcBuffer, "%f%s", calcValue, isoInfo.unit.c_str());
+    else sprintf(calcBuffer, "%.0f%s", calcValue, isoInfo.unit.c_str());
     calcBaseLabel->setString(calcBuffer);
 
     if(equal) {
@@ -1064,10 +1174,6 @@ void Main::SetTouch(Touch* touch, TouchType type) {
 
 void Main::UpdateMessage() {
     int message = (int)(100 * messageMotions.size() * CCRANDOM_0_1()) / 100;
-    
-    CocosDenshion::SimpleAudioEngine* audioEngine = CocosDenshion::SimpleAudioEngine::getInstance();
-    int voice = (int)(100 * voiceFiles.size() * CCRANDOM_0_1()) / 100;
-    audioEngine->playEffect((voiceFiles[voice]).c_str());
 
     const MessageMotion& messageMotion = messageMotions[message];
     charaMessage->setString(messageMotion.message.c_str());
@@ -1075,16 +1181,59 @@ void Main::UpdateMessage() {
     charaBalloonSprite->setVisible(true);
 
     const std::string& sprite = motionSpriteMap.find(messageMotion.motion)->second;
-//    charaUnitSprite->setTexture(sprite.c_str());
+    
+    audioEngine->playEffect((voiceFiles[messageMotion.voice]).c_str());
 
     Texture2D *tex = TextureCache::sharedTextureCache()->addImage(sprite.c_str());
     charaUnitSprite->setTexture(tex);
     Size contentSize = tex->getContentSize();
     charaUnitSprite->setTextureRect(CCRectMake(0, 0, contentSize.width, contentSize.height));
 
+    // 読み上げをキャンセルする
+    readingItem = NULL;
+}
 
+void Main::ReadValue(Item* touchedItem) {
+    readingItem = touchedItem;
+    if(readingSoundId > 0)
+        audioEngine->stopEffect(readingSoundId);
+    readingSoundId = 0;
 
+    readingVoices.clear();
+    float value = readingItem->GetSaleValue();
+    if(value < 1) {
+        readingVoices.push_back(Voice0);
+    }
+    else {
+        readingVoices.splice(readingVoices.end(), ArrangeValueVoices((int)value));
+    }
+    const ISOInfo* isoInfo = readingItem->GetISOInfo();
+    int decimalValue = (int)(value * 100) % 100;
+    if(isoInfo->code == JPY) {
+        readingVoices.push_back(isoInfo->voice1);
 
+        // 小数点
+        if(decimalValue > 0) {
+            readingVoices.splice(readingVoices.end(), ArrangeValueVoices(decimalValue));
+            readingVoices.push_back(isoInfo->voice2);
+        }
+    }
+    else {
+        // 小数点
+        if(decimalValue > 0) {
+            readingVoices.push_back(VoiceTen);
+            if(decimalValue / 10 > 0)
+                readingVoices.splice(readingVoices.end(), ArrangeValueVoices(decimalValue / 10));
+            else readingVoices.push_back(Voice0);
+            if(decimalValue % 10 > 0)
+                readingVoices.splice(readingVoices.end(), ArrangeValueVoices(decimalValue % 10));
+        }
+
+        if(isoInfo->voice1 != VoiceNone)
+            readingVoices.push_back(isoInfo->voice1);
+        if(isoInfo->voice2 != VoiceNone)
+            readingVoices.push_back(isoInfo->voice2);
+    }
 }
 
 bool Item::init(const ISOInfo* isoInfo) {
@@ -1095,17 +1244,16 @@ bool Item::init(const ISOInfo* isoInfo) {
     addChild(spriteFrame);
     Rect frameRect = spriteFrame->getTextureRect();
     itemHeight = frameRect.size.height;
-/*
+
     // フラグ
     spriteFlag = Sprite::create(isoInfo->flag.c_str());
     spriteFlag->setPosition(Point(24, frameRect.size.height / 2));
     spriteFlag->setAnchorPoint(Point(0,0.5f));
-    spriteFlag->setScale(0.4f);
     spriteFrame->addChild(spriteFlag);
-*/
+
     // 名前
     labelCountry = Label::createWithSystemFont(isoInfo->country.c_str(), "Arial", 32);
-    labelCountry->setPosition(Point(48, frameRect.size.height / 2));
+    labelCountry->setPosition(Point(112, frameRect.size.height / 2));
     labelCountry->setAnchorPoint(Point(0,0.5f));
     spriteFrame->addChild(labelCountry);
 
@@ -1128,15 +1276,23 @@ void Item::refresh(const std::map<ISO4217, RateData>& rates, float value) {
     if(rates.find(isoInfo->code) != rates.end()) {
         const RateData& rateData = rates.find(isoInfo->code)->second;
         saleValue = value * rateData.sale;
-        sprintf(valueBuffer, "%.1f %s", saleValue, isoInfo->unit.c_str());
+        int valueInt = (int)(saleValue * 100);
+        if(valueInt % 100 != 0)
+            sprintf(valueBuffer, "%d.%02d", valueInt / 100, valueInt % 100);
+        else sprintf(valueBuffer, "%d", valueInt / 100);
+        strcat(valueBuffer, isoInfo->unit.c_str());
         labelCountry->setColor(Color3B::WHITE);
         labelValue->setColor(Color3B::WHITE);
     }
     else {
         saleValue = value;
-        sprintf(valueBuffer, "%.1f %s", value, isoInfo->unit.c_str());        
-        labelCountry->setColor(Color3B::YELLOW);
-        labelValue->setColor(Color3B::YELLOW);
+        int valueInt = (int)(saleValue * 100);
+        if(valueInt % 100 != 0)
+            sprintf(valueBuffer, "%d.%02d", valueInt / 100, valueInt % 100);
+        else sprintf(valueBuffer, "%d", valueInt / 100);
+        strcat(valueBuffer, isoInfo->unit.c_str());
+        labelCountry->setColor(Color3B::WHITE);//YELLOW);
+        labelValue->setColor(Color3B::WHITE);//YELLOW);
     }
     labelValue->setString(valueBuffer);
 }
@@ -1148,6 +1304,20 @@ void Item::Remove() {
 bool Item::IsTouched(Point pos) {
     Point vec = pos - _position;
     return (fabs(vec.x) < 320 && fabs(vec.y) < itemOffset/2);
+}
+
+bool Item::IsTouchedSpeak(Point pos) {
+    Point vec = pos - spriteFlag->getPosition();
+    vec.y -= getPosition().y;
+    
+    Rect buttonRect = spriteFlag->getTextureRect();
+    return (fabs(vec.x) < buttonRect.size.width*0.75f && fabs(vec.y) < itemOffset/2);
+}
+
+bool Item::IsTouchedMoney(Point pos) {
+    Point vec = pos - getPosition();
+
+    return (vec.x > 0 && fabs(vec.y) < itemOffset/2);
 }
 
 bool CalcButton::init(
